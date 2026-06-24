@@ -97,8 +97,14 @@ class StockTradingEnv(gym.Env):
         new_prices = self.df.iloc[self.day][[f'Close_{t}' for t in self.tickers]].values
         self.total_portfolio_value = self.balance + np.sum(self.shares_held * new_prices)
 
-        reward = self.total_portfolio_value - begin_value
-        self.rewards_memory.append(reward)
+        raw_reward = self.total_portfolio_value - begin_value
+        self.rewards_memory.append(raw_reward)
+        
+        # Risk-adjusted reward: down-side variance penalty to boost Sharpe Ratio
+        pct_return = raw_reward / begin_value
+        reward = pct_return if pct_return >= 0 else pct_return * 2.0
+        reward = reward * 100
+        
         state = self._get_state()
 
         return state, reward, self.terminal, {}
@@ -235,7 +241,7 @@ def run_experiment():
     print("\n--- Training Baseline PPO Agent on Real Data ---")
     real_env = DummyVecEnv([lambda: StockTradingEnv(train_df, tickers)])
     baseline_model = PPO('MlpPolicy', real_env, learning_rate=0.0003, n_steps=1024, batch_size=64, n_epochs=5, verbose=0)
-    baseline_model.learn(total_timesteps=30000)
+    baseline_model.learn(total_timesteps=50000)
     print("Baseline PPO training complete.")
     
     # 3. Train Diffusion World Model
@@ -286,7 +292,7 @@ def run_experiment():
     print("\n--- Training World Model PPO Agent on Synthetic Data ---")
     synth_env = DummyVecEnv([lambda: StockTradingEnv(synth_df, tickers)])
     world_model_agent = PPO('MlpPolicy', synth_env, learning_rate=0.0003, n_steps=1024, batch_size=64, n_epochs=5, verbose=0)
-    world_model_agent.learn(total_timesteps=30000)
+    world_model_agent.learn(total_timesteps=50000)
     print("World Model PPO training complete.")
     
     # 6. Evaluation on Out-Of-Distribution (OOD) test period
